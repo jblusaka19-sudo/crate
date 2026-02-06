@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { AppProvider, useApp } from './context/AppContext';
 import { Layout } from './components/Layout';
 import { Loading } from './components/ui/Loading';
+import { PWAInstallPrompt } from './components/PWAInstallPrompt';
 import { Dashboard } from './pages/Dashboard';
 import { Customers } from './pages/Customers';
 import { CustomerLedger } from './pages/CustomerLedger';
@@ -58,9 +59,12 @@ const AppContent = () => {
   };
 
   return (
-    <Layout currentPage={currentPage} onNavigate={setCurrentPage}>
-      {renderPage()}
-    </Layout>
+    <>
+      <Layout currentPage={currentPage} onNavigate={setCurrentPage}>
+        {renderPage()}
+      </Layout>
+      <PWAInstallPrompt />
+    </>
   );
 };
 

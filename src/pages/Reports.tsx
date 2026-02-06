@@ -43,6 +43,8 @@ export const Reports = () => {
   const [reportData, setReportData] = useState<ReportData[]>([]);
   const [customerReportData, setCustomerReportData] = useState<CustomerReportData[]>([]);
   const [hasGenerated, setHasGenerated] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [showZeroBalances, setShowZeroBalances] = useState(false);
 
   const calculateDateRange = () => {
     const today = new Date();
@@ -71,10 +73,17 @@ export const Reports = () => {
     const depotId = reportDepotId || selectedDepot?.id;
     if (!depotId) return;
 
-    if (reportType === 'depot') {
-      generateDepotReport(depotId);
-    } else {
-      generateCustomerReport(depotId);
+    setLoading(true);
+    setHasGenerated(false);
+
+    try {
+      if (reportType === 'depot') {
+        await generateDepotReport(depotId);
+      } else {
+        await generateCustomerReport(depotId);
+      }
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -145,13 +154,13 @@ export const Reports = () => {
     }
   };
 
-  const exportToCSV = () => {
+  const exportDepotToCSV = () => {
     const depotName = depots.find((d) => d.id === (reportDepotId || selectedDepot?.id))?.name || 'All';
     const dates = calculateDateRange();
     const headers = ['Crate Type', 'Opening', 'Incoming', 'Outgoing', 'Trans In', 'Trans Out', 'Closing'];
     const rows = reportData.map((r) => [r.crateTypeName, r.openingBalance, r.incoming, r.outgoing, r.transfersIn, r.transfersOut, r.closingBalance]);
     const csvContent = [
-      [`CrateFlow Pro Report`],
+      [`CrateFlow Depot Report`],
       [`Depot: ${depotName}`],
       [`Period: ${dates.start} to ${dates.end}`],
       [],
@@ -160,11 +169,37 @@ export const Reports = () => {
       [],
       ['Total', reportData.reduce((sum, r) => sum + r.openingBalance, 0), reportData.reduce((sum, r) => sum + r.incoming, 0), reportData.reduce((sum, r) => sum + r.outgoing, 0), reportData.reduce((sum, r) => sum + r.transfersIn, 0), reportData.reduce((sum, r) => sum + r.transfersOut, 0), reportData.reduce((sum, r) => sum + r.closingBalance, 0)],
     ].map((row) => row.join(',')).join('\n');
-    const blob = new Blob([csvContent], { type: 'text/csv' });
+    downloadCSV(csvContent, `depot-report-${dates.start}-to-${dates.end}.csv`);
+  };
+
+  const exportCustomerToCSV = () => {
+    const depotName = depots.find((d) => d.id === (reportDepotId || selectedDepot?.id))?.name || 'Current';
+    const filteredData = showZeroBalances ? customerReportData : customerReportData.filter(r => r.balance > 0);
+    const headers = ['Customer', 'Crate Type', 'Balance'];
+    const rows = filteredData.map((r) => [r.customerName, r.crateTypeName, r.balance]);
+
+    const totalBalance = filteredData.reduce((sum, r) => sum + r.balance, 0);
+    const uniqueCustomers = new Set(filteredData.map(r => r.customerName)).size;
+
+    const csvContent = [
+      [`CrateFlow Customer Ledger Report`],
+      [`Depot: ${depotName}`],
+      [`Date: ${new Date().toISOString().split('T')[0]}`],
+      [`Total Customers: ${uniqueCustomers}`],
+      [`Total Crates: ${totalBalance}`],
+      [],
+      headers,
+      ...rows,
+    ].map((row) => row.join(',')).join('\n');
+    downloadCSV(csvContent, `customer-ledger-report-${new Date().toISOString().split('T')[0]}.csv`);
+  };
+
+  const downloadCSV = (content: string, filename: string) => {
+    const blob = new Blob([content], { type: 'text/csv' });
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `report-${dates.start}-to-${dates.end}.csv`;
+    a.download = filename;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -220,7 +255,10 @@ export const Reports = () => {
             </div>
           )}
           <div className="flex justify-end">
-            <Button onClick={generateReport}><Search className="w-4 h-4 mr-2" />Generate</Button>
+            <Button onClick={generateReport} disabled={loading}>
+              <Search className="w-4 h-4 mr-2" />
+              {loading ? 'Generating...' : 'Generate Report'}
+            </Button>
           </div>
         </div>
       </Card>
@@ -229,11 +267,13 @@ export const Reports = () => {
           <div className="space-y-4">
             <div className="flex justify-between items-center">
               <h3 className="text-lg font-semibold">Results</h3>
-              {reportType === 'depot' && (
-                <Button variant="secondary" onClick={exportToCSV} icon={<FileDown className="w-4 h-4" />}>
-                  Export CSV
-                </Button>
-              )}
+              <Button
+                variant="secondary"
+                onClick={reportType === 'depot' ? exportDepotToCSV : exportCustomerToCSV}
+                icon={<FileDown className="w-4 h-4" />}
+              >
+                Export CSV
+              </Button>
             </div>
             {reportType === 'depot' ? (
               <div className="overflow-x-auto">
@@ -274,27 +314,56 @@ export const Reports = () => {
                 </table>
               </div>
             ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead className="bg-gray-50 dark:bg-gray-700/50 border-b">
-                    <tr>
-                      <th className="px-4 py-3 text-left font-medium">Customer</th>
-                      <th className="px-4 py-3 text-left font-medium">Crate Type</th>
-                      <th className="px-4 py-3 text-right font-medium">Balance</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y">
-                    {customerReportData.map((row, idx) => (
-                      <tr key={idx} className="hover:bg-gray-50 dark:hover:bg-gray-700/30">
-                        <td className="px-4 py-3 font-medium">{row.customerName}</td>
-                        <td className="px-4 py-3">{row.crateTypeName}</td>
-                        <td className="px-4 py-3 text-right font-semibold text-blue-600 dark:text-blue-400">
-                          {row.balance}
-                        </td>
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={showZeroBalances}
+                        onChange={(e) => setShowZeroBalances(e.target.checked)}
+                        className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                      />
+                      <span className="text-sm text-gray-700 dark:text-gray-300">Show zero balances</span>
+                    </label>
+                  </div>
+                  <div className="text-sm text-gray-600 dark:text-gray-400">
+                    Total: <span className="font-semibold text-gray-900 dark:text-white">
+                      {customerReportData.filter(r => showZeroBalances || r.balance > 0).reduce((sum, r) => sum + r.balance, 0)} crates
+                    </span>
+                  </div>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead className="bg-gray-50 dark:bg-gray-700/50 border-b">
+                      <tr>
+                        <th className="px-4 py-3 text-left font-medium">Customer</th>
+                        <th className="px-4 py-3 text-left font-medium">Crate Type</th>
+                        <th className="px-4 py-3 text-right font-medium">Balance</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody className="divide-y">
+                      {customerReportData
+                        .filter(row => showZeroBalances || row.balance > 0)
+                        .map((row, idx) => (
+                          <tr key={idx} className="hover:bg-gray-50 dark:hover:bg-gray-700/30">
+                            <td className="px-4 py-3 font-medium">{row.customerName}</td>
+                            <td className="px-4 py-3">{row.crateTypeName}</td>
+                            <td className="px-4 py-3 text-right font-semibold text-blue-600 dark:text-blue-400">
+                              {row.balance}
+                            </td>
+                          </tr>
+                        ))}
+                      {customerReportData.filter(row => showZeroBalances || row.balance > 0).length === 0 && (
+                        <tr>
+                          <td colSpan={3} className="px-4 py-8 text-center text-gray-500 dark:text-gray-400">
+                            No customer ledger entries found
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             )}
           </div>

@@ -23,8 +23,9 @@ export const CustomerLedger = () => {
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [transactions, setTransactions] = useState<CustomerLedgerTransaction[]>([]);
   const [balances, setBalances] = useState<Record<string, number>>({});
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [formData, setFormData] = useState<TransactionForm>({
     customerId: '',
     crateTypeId: '',
@@ -48,20 +49,27 @@ export const CustomerLedger = () => {
 
   const loadCustomers = async () => {
     if (!selectedDepot) return;
+    setLoading(true);
+    setError(null);
     try {
       const { data, error } = await supabase
         .from('customers')
         .select('*')
         .eq('depot_id', selectedDepot.id)
         .order('name');
-      if (!error && data) {
+      if (error) throw error;
+      if (data) {
         setCustomers(data);
         if (data.length > 0) {
           setSelectedCustomer(data[0]);
+        } else {
+          setLoading(false);
         }
       }
     } catch (error) {
       console.error('Error loading customers:', error);
+      setError('Failed to load customers. Please try again.');
+      setLoading(false);
     }
   };
 
@@ -158,11 +166,33 @@ export const CustomerLedger = () => {
     }
   };
 
+  if (loading && customers.length === 0) {
+    return (
+      <div className="flex items-center justify-center h-96">
+        <Loading size="lg" text="Loading customer ledger..." />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="space-y-6">
+        <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Customer Ledger</h1>
+        <Card>
+          <div className="text-center py-12">
+            <p className="text-red-600 dark:text-red-400 mb-4">{error}</p>
+            <Button onClick={loadCustomers}>Retry</Button>
+          </div>
+        </Card>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Customer Ledger</h1>
-        <Button onClick={handleOpenModal} icon={Plus}>
+        <Button onClick={handleOpenModal} icon={Plus} disabled={!selectedCustomer}>
           Add Transaction
         </Button>
       </div>
