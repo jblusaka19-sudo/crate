@@ -43,7 +43,9 @@ export const CustomerLedger = () => {
 
   useEffect(() => {
     if (selectedCustomer) {
-      loadTransactionsAndBalances();
+      (async () => {
+        await loadTransactionsAndBalances();
+      })();
     }
   }, [selectedCustomer]);
 
@@ -51,6 +53,8 @@ export const CustomerLedger = () => {
     if (!selectedDepot) return;
     setLoading(true);
     setError(null);
+    setTransactions([]);
+    setBalances({});
     try {
       const { data, error } = await supabase
         .from('customers')
@@ -58,13 +62,12 @@ export const CustomerLedger = () => {
         .eq('depot_id', selectedDepot.id)
         .order('name');
       if (error) throw error;
-      if (data) {
+      if (data && data.length > 0) {
         setCustomers(data);
-        if (data.length > 0) {
-          setSelectedCustomer(data[0]);
-        } else {
-          setLoading(false);
-        }
+        setSelectedCustomer(data[0]);
+      } else if (data) {
+        setCustomers([]);
+        setLoading(false);
       }
     } catch (error) {
       console.error('Error loading customers:', error);
